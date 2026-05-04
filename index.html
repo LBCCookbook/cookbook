@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LBCC Cookbook</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f4f4f4;
+        margin: 0;
+        padding: 0;
+    }
+
+    h1 {
+        text-align: center;
+        padding: 20px;
+        margin: 0;
+        background: #333;
+        color: white;
+    }
+
+    /* CATEGORY TILE GRID */
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        padding: 20px;
+    }
+
+    .category-tile {
+        position: relative;
+        height: 150px;
+        border-radius: 10px;
+        overflow: hidden;
+        cursor: pointer;
+        color: white;
+        font-size: 22px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-shadow: 0 0 5px black;
+        transition: transform .2s;
+    }
+
+    .category-tile:hover {
+        transform: scale(1.03);
+    }
+
+    .category-tile::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: rgba(0,0,0,0.45);
+    }
+
+    .category-tile span {
+        position: relative;
+        z-index: 2;
+    }
+
+    /* ACCORDION AREA */
+    .accordion-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height .45s ease;
+        background: #fff;
+        margin: 0 20px 20px 20px;
+        border-radius: 10px;
+        padding: 0 15px;
+    }
+
+    /* RECIPE CARD */
+    .recipe-card {
+        background: #fafafa;
+        padding: 15px;
+        margin: 15px 0;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+    }
+
+    .recipe-card img {
+        max-width: 100%;
+        border-radius: 6px;
+        margin-top: 10px;
+    }
+
+    /* BADGES */
+    .badge-container {
+        margin: 10px 0;
+    }
+
+    .badge {
+        display: inline-block;
+        background: #333;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 20px;
+        margin-right: 8px;
+        font-size: 14px;
+    }
+
+    /* ADMIN PANEL */
+    #adminPanel {
+        display: none;
+        background: #222;
+        color: white;
+        padding: 20px;
+    }
+
+    input, textarea, select {
+        width: 100%;
+        padding: 8px;
+        margin: 6px 0 12px 0;
+        border-radius: 5px;
+        border: 1px solid #aaa;
+    }
+
+    button {
+        padding: 10px 15px;
+        border: none;
+        background: #333;
+        color: white;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+    button:hover {
+        background: #555;
+    }
+
+    .delete-btn {
+        background: #b30000;
+    }
+
+    /* PINTEREST SEARCH GRID */
+    #searchResults {
+        display: none;
+        padding: 20px;
+    }
+
+    .search-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 20px;
+    }
+
+    .search-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        overflow: hidden;
+    }
+
+    .search-card img {
+        width: 100%;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+</style>
+</head>
+
+<body>
+
+<h1>LBCC Cookbook</h1>
+
+<div style="text-align:center; margin-top:10px;">
+    <button onclick="showPasswordPrompt()">Admin Login</button>
+</div>
+
+<!-- SEARCH BAR -->
+<div style="padding:20px;">
+    <input type="text" id="searchBar" placeholder="Search recipes..." oninput="handleSearch()">
+</div>
+
+<!-- PINTEREST SEARCH RESULTS -->
+<div id="searchResults"></div>
+
+<!-- CATEGORY GRID -->
+<div id="categoryGrid" class="category-grid"></div>
+
+<!-- ACCORDION CONTAINERS -->
+<div id="accordionArea"></div>
+
+<!-- ADMIN PANEL -->
+<div id="adminPanel">
+    <h2>Add / Edit Recipe</h2>
+
+    <label>Recipe Name</label>
+    <input id="recipeName">
+
+    <label>Category</label>
+    <select id="recipeCategory">
+        <option>Appetizers</option>
+        <option>Main Dishes</option>
+        <option>Side Dishes</option>
+        <option>Desserts</option>
+        <option>Breads</option>
+        <option>Soups</option>
+        <option>Other</option>
+    </select>
+
+    <label>Cook's Name (optional)</label>
+    <input id="recipeCook">
+
+    <label>Serves</label>
+    <input id="recipeServes">
+
+    <label>Prep Time (e.g., 15m, 1h)</label>
+    <input id="recipePrep">
+
+    <label>Cook Time (e.g., 45m, 2h)</label>
+    <input id="recipeCookTime">
+
+    <label>Ingredients</label>
+    <textarea id="recipeIngredients"></textarea>
+
+    <label>Instructions</label>
+    <textarea id="recipeInstructions"></textarea>
+
+    <label>Image Upload</label>
+    <input type="file" id="recipeImage">
+
+    <button onclick="saveRecipe()">Save Recipe</button>
+</div>
+
+<script>
+/* -------------------------
+   DATA + ADMIN LOGIN
+-------------------------- */
+
+let recipes = JSON.parse(localStorage.getItem("cookbookRecipes") || "{}");
+const MASTER_PASSWORD = "LBCCookbook";
+let isAdmin = false;
+let editCategory = null;
+let editIndex = null;
+
+/* -------------------------
+   CATEGORY IMAGES
+-------------------------- */
+
+const categoryImages = {
+    "Appetizers": "https://images.unsplash.com/photo-1543353071-10c8ba85a904",
+    "Main Dishes": "https://images.unsplash.com/photo-1604908177522-0404d8a2f3c5",
+    "Side Dishes": "https://images.unsplash.com/photo-1504674900247-0877df9cc836",
+    "Desserts": "https://images.unsplash.com/photo-1505253716362-afaea1d3d1af",
+    "Breads": "https://images.unsplash.com/photo-1608198093002-ad4e0054848b",
+    "Soups": "https://images.unsplash.com/photo-1547592180-85f173990554",
+    "Other": "https://images.unsplash.com/photo-1506368249639-73a05d6f6488"
+};
+
+/* -------------------------
+   ADMIN LOGIN
+-------------------------- */
+
+function showPasswordPrompt() {
+    const pw = prompt("Enter admin password:");
+    if (pw === MASTER_PASSWORD) {
+        isAdmin = true;
+        document.getElementById("adminPanel").style.display = "block";
+        alert("Admin mode enabled");
+    } else {
+        alert("Incorrect password");
+    }
+}
+
+/* -------------------------
+   DISPLAY CATEGORY TILES
+-------------------------- */
+
+function displayCategories() {
+    const grid = document.getElementById("categoryGrid");
+    const accordion = document.getElementById("accordionArea");
+
+    grid.style.display = "grid";
+    accordion.style.display = "block";
+
+    grid.innerHTML = "";
+    accordion.innerHTML = "";
+
+    Object.keys(categoryImages).forEach(category => {
+        const tile = document.createElement("div");
+        tile.className = "category-tile";
+        tile.style.backgroundImage = `url('${categoryImages[category]}')`;
+        tile.style.backgroundSize = "cover";
+        tile.style.backgroundPosition = "center";
+
+        tile.innerHTML = `<span>${category}</span>`;
+        tile.onclick = () => toggleAccordion(category);
+
+        grid.appendChild(tile);
+
+        const acc = document.createElement("div");
+        acc.id = "acc-" + category.replace(/\s+/g, "");
+        acc.className = "accordion-content";
+        accordion.appendChild(acc);
+    });
+}
+
+/* -------------------------
+   ACCORDION BEHAVIOR
+-------------------------- */
+
+function toggleAccordion(category) {
+    const id = "acc-" + category.replace(/\s+/g, "");
+    const panel = document.getElementById(id);
+
+    document.querySelectorAll(".accordion-content").forEach(a => {
+        if (a !== panel) a.style.maxHeight = "0px";
+    });
+
+    if (panel.style.maxHeight === "0px" || panel.style.maxHeight === "") {
+        loadRecipesIntoAccordion(category);
+        panel.style.maxHeight = panel.scrollHeight + "px";
+    } else {
+        panel.style.maxHeight = "0px";
+    }
+}
+
+/* -------------------------
+   LOAD RECIPES INTO ACCORDION
+-------------------------- */
+
+function loadRecipesIntoAccordion(category) {
+    const panel = document.getElementById("acc-" + category.replace(/\s+/g, ""));
+    panel.innerHTML = "";
+
+    const list = recipes[category] || [];
+
+    list.forEach((r, i) => {
+        const card = document.createElement("div");
+        card.className = "recipe-card";
+
+        card.innerHTML = `
+            <h3>${r.name}</h3>
+
+            <div class="badge-container">
+                ${r.serves ? `<span class="badge">Serves ${r.serves}</span>` : ""}
+                ${r.prep ? `<span class="badge">Prep ${r.prep}</span>` : ""}
+                ${r.cookTime ? `<span class="badge">Cook ${r.cookTime}</span>` : ""}
+            </div>
+
+            ${r.cook ? `<p><strong>Submitted by:</strong> ${r.cook}</p>` : ""}
+            <p><strong>Ingredients:</strong><br>${r.ingredients}</p>
+            <p><strong>Instructions:</strong><br>${r.instructions}</p>
+            ${r.image ? `<img src="${r.image}">` : ""}
+            ${isAdmin ? `
+                <button onclick="editRecipe('${category}', ${i})">Edit</button>
+                <button class="delete-btn" onclick="deleteRecipe('${category}', ${i})">Delete</button>
+            ` : ""}
+        `;
+
+        panel.appendChild(card);
+    });
+
+    panel.style.maxHeight = panel.scrollHeight + "px";
+}
+
+/* -------------------------
+   PINTEREST SEARCH
+-------------------------- */
+
+function handleSearch() {
+    const search = document.getElementById("searchBar").value.toLowerCase();
+    const searchResults = document.getElementById("searchResults");
+    const categoryGrid = document.getElementById("categoryGrid");
+    const accordionArea = document.getElementById("accordionArea");
+
+    if (search.trim() === "") {
+        searchResults.style.display = "none";
+        searchResults.innerHTML = "";
+        categoryGrid.style.display = "grid";
+        accordionArea.style.display = "block";
+        displayCategories();
+        return;
+    }
+
+    categoryGrid.style.display = "none";
+    accordionArea.style.display = "none";
+
+    searchResults.style.display = "block";
+    searchResults.innerHTML = "";
+
+    const grid = document.createElement("div");
+    grid.className = "search-grid";
+
+    Object.keys(recipes).forEach(category => {
+        recipes[category].forEach((r, i) => {
+            if (
+                r.name.toLowerCase().includes(search) ||
+                r.ingredients.toLowerCase().includes(search)
+            ) {
+                const card = document.createElement("div");
+                card.className = "search-card";
+
+                card.innerHTML = `
+                    ${r.image ? `<img src="${r.image}">` : ""}
+                    <h3>${r.name}</h3>
+
+                    <div class="badge-container">
+                        ${r.serves ? `<span class="badge">Serves ${r.serves}</span>` : ""}
+                        ${r.prep ? `<span class="badge">Prep ${r.prep}</span>` : ""}
+                        ${r.cookTime ? `<span class="badge">Cook ${r.cookTime}</span>` : ""}
+                    </div>
+
+                    <p><strong>Category:</strong> ${category}</p>
+                    ${r.cook ? `<p><strong>Cook:</strong> ${r.cook}</p>` : ""}
+                    <p><strong>Ingredients:</strong><br>${r.ingredients}</p>
+                    <p><strong>Instructions:</strong><br>${r.instructions}</p>
+                    ${isAdmin ? `
+                        <button onclick="editRecipe('${category}', ${i})">Edit</button>
+                        <button class="delete-btn" onclick="deleteRecipe('${category}', ${i})">Delete</button>
+                    ` : ""}
+                `;
+
+                grid.appendChild(card);
+            }
+        });
+    });
+
+    searchResults.appendChild(grid);
+}
+
+/* -------------------------
+   SAVE RECIPE
+-------------------------- */
+
+function saveRecipe() {
+    const name = document.getElementById("recipeName").value;
+    const category = document.getElementById("recipeCategory").value;
+    const cook = document.getElementById("recipeCook").value;
+    const serves = document.getElementById("recipeServes").value;
+    const prep = document.getElementById("recipePrep").value;
+    const cookTime = document.getElementById("recipeCookTime").value;
+    const ingredients = document.getElementById("recipeIngredients").value;
+    const instructions = document.getElementById("recipeInstructions").value;
+    const imageFile = document.getElementById("recipeImage").files[0];
+
+    if (!recipes[category]) recipes[category] = [];
+
+    let imageData = null;
+    if (imageFile) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            imageData = reader.result;
+            finalizeSave();
+        };
+        reader.readAsDataURL(imageFile);
+    } else {
+        finalizeSave();
+    }
+
+    function finalizeSave() {
+        const recipe = { 
+            name, cook, serves, prep, cookTime,
+            ingredients, instructions, image: imageData 
+        };
+
+        if (editCategory !== null) {
+            recipes[editCategory][editIndex] = recipe;
+            editCategory = null;
+            editIndex = null;
+        } else {
+            recipes[category].push(recipe);
+        }
+
+        localStorage.setItem("cookbookRecipes", JSON.stringify(recipes));
+        alert("Recipe saved!");
+        displayCategories();
+    }
+}
+
+/* -------------------------
+   EDIT RECIPE
+-------------------------- */
+
+function editRecipe(category, index) {
+    const r = recipes[category][index];
+
+    document.getElementById("recipeName").value = r.name;
+    document.getElementById("recipeCategory").value = category;
+    document.getElementById("recipeCook").value = r.cook || "";
+    document.getElementById("recipeServes").value = r.serves || "";
+    document.getElementById("recipePrep").value = r.prep || "";
+    document.getElementById("recipeCookTime").value = r.cookTime || "";
+    document.getElementById("recipeIngredients").value = r.ingredients;
+    document.getElementById("recipeInstructions").value = r.instructions;
+
+    editCategory = category;
+    editIndex = index;
+
+    window.scrollTo(0, 0);
+}
+
+/* -------------------------
+   DELETE RECIPE
+-------------------------- */
+
+function deleteRecipe(category, index) {
+    if (confirm("Delete this recipe?")) {
+        recipes[category].splice(index, 1);
+        localStorage.setItem("cookbookRecipes", JSON.stringify(recipes));
+        displayCategories();
+    }
+}
+
+/* -------------------------
+   INIT
+-------------------------- */
+
+displayCategories();
+
+</script>
+</body>
+</html>
